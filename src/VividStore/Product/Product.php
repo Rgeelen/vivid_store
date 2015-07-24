@@ -162,7 +162,7 @@ class Product extends Object
                     $groupEntity = \Concrete\Core\Permission\Access\Entity\GroupEntity::getOrCreate(\Group::getByID(GUEST_GROUP_ID));                    
                     $pa = $pk->getPermissionAccessObject();
                     if ($pa) {
-                        $pa->removeListItem($groupEntity);
+                        $pa->ListItem($groupEntity);
                         $pao->assignPermissionAccess($pa);
                     }
 
@@ -181,6 +181,12 @@ class Product extends Object
         $db->Execute("DELETE FROM VividStoreProductImages WHERE pID=?",$this->pID);
         $db->Execute("DELETE FROM VividStoreProductOptionGroups WHERE pID=?",$this->pID);
         $db->Execute("DELETE FROM VividStoreProductOptionItems WHERE pID=?",$this->pID);
+        
+        //delete page from sitemap
+        $page = Page::getByID($this->cID);
+        if(is_object($page)){
+            $page->delete();
+        }
     }
     public function generatePage($templateID=null){
         $pkg = Package::getByHandle('vivid_store');
