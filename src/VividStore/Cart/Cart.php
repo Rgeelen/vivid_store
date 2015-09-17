@@ -267,7 +267,7 @@ class Cart
         }
 
         $discounts = self::getDiscounts();
-
+        /*
         foreach($discounts as $discount) {
             if ($discount->drDeductFrom == 'subtotal') {
                 if ($discount->drDeductType  == 'value' ) {
@@ -279,8 +279,9 @@ class Cart
                 }
             }
         }
-
+        */
         return max($subtotal,0);
+        
     }
 
     public function getTotalItemsInCart(){
@@ -375,23 +376,21 @@ class Cart
 
     public function getTotal()
     {
-        $subTotal = Price::getFloat(Cart::getSubTotal());
+        $subTotal = Cart::getSubTotal();
         $taxTotal = 0;
         $taxes = Tax::getTaxes();
+        $taxCalc = Config::get('vividstore.calculation');
 
-        if($taxes){
+        if($taxes && $taxCalc != 'extract'){
             foreach($taxes as $tax) {
-                if ($tax['calculation'] != 'extract') {
-                    $taxTotal += $tax['taxamount'];
-                }
+                $taxTotal += $tax['taxamount'];
             }
         }
 
-
-        $shippingTotal = Price::getFloat(Cart::getShippingTotal());
-
+        
+        $shippingTotal = Cart::getShippingTotal();
         $grandTotal = ($subTotal + $taxTotal + $shippingTotal);
-
+        
         $discounts = self::getDiscounts();
         foreach($discounts as $discount) {
             if ($discount->drDeductFrom == 'total') {
@@ -404,19 +403,21 @@ class Cart
                 }
             }
         }
-
+        
         return $grandTotal;
     }
 
     // returns an array of formatted cart totals
     public function getTotals() {
-        $subTotal = Price::getFloat(Cart::getSubTotal());
+        $subTotal = Cart::getSubTotal();
         $taxes = Tax::getTaxes();
         $addedTaxTotal = 0;
         $includedTaxTotal = 0;
+        $taxCalc = Config::get('vividstore.calculation');
+
         if($taxes){
             foreach($taxes as $tax) {
-                if ($tax['calculation'] != 'extract') {
+                if ($taxCalc != 'extract') {
                     $addedTaxTotal += $tax['taxamount'];
                 } else {
                     $includedTaxTotal += $tax['taxamount'];
@@ -424,10 +425,25 @@ class Cart
             }
         }
 
-        $shippingTotal = Price::getFloat(Cart::getShippingTotal());
-        $total = ($subTotal + $addedTaxTotal + $shippingTotal);
-
+        $shippingTotal = Cart::getShippingTotal();
+        $discountedSubtotal = $subTotal;
         $discounts = self::getDiscounts();
+        foreach($discounts as $discount) {
+            if ($discount->drDeductFrom == 'subtotal') {
+                
+                if ($discount->drDeductType  == 'value' ) {
+                    $discountedSubtotal -= $discount->drValue;
+                }
+
+                if ($discount->drDeductType  == 'percentage' ) {
+                    $discountedSubtotal -= ($discount->drPercentage / 100 * $discountedSubtotal);
+                }
+            }
+        }
+        
+        $total = ($discountedSubtotal + $addedTaxTotal + $shippingTotal);
+        
+        
         foreach($discounts as $discount) {
             if ($discount->drDeductFrom == 'total') {
                 if ($discount->drDeductType  == 'value' ) {
@@ -443,12 +459,29 @@ class Cart
         return array('subTotal'=>$subTotal,'taxes'=>$taxes, 'taxTotal'=>$addedTaxTotal + $includedTaxTotal, 'shippingTotal'=>$shippingTotal, 'total'=>$total);
     }
 
+    // determines if a cart requires a customer to be logged in
     public function requiresLogin() {
         if(self::getCart()){
             foreach(self::getCart() as $item) {
                 $product = VividProduct::getByID($item['product']['pID']);
                 if ($product) {
                     if (($product->hasUserGroups() || $product->hasDigitalDownload()) && !$product->createsLogin()) {
+                        return true;
+                    }
+                }
+            }
+        }
+
+        return false;
+    }
+
+    // determines if the cart contains a product that will auto-create a user account
+    public function createsAccount() {
+        if(self::getCart()){
+            foreach(self::getCart() as $item) {
+                $product = VividProduct::getByID($item['product']['pID']);
+                if ($product) {
+                    if ($product->createsLogin()) {
                         return true;
                     }
                 }

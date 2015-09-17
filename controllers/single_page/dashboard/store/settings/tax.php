@@ -6,7 +6,6 @@ use \Concrete\Core\Page\Controller\DashboardPageController;
 use View;
 use Loader;
 use Core;
-use Package;
 
 use \Concrete\Package\VividStore\Src\VividStore\Tax\Tax as StoreTax;
 use \Concrete\Package\VividStore\Src\VividStore\Tax\TaxClass;
@@ -43,11 +42,9 @@ class Tax extends DashboardPageController
     }
     public function loadFormAssets()
     {
-        $pkg = Package::getByHandle('vivid_store');
-        $packagePath = $pkg->getRelativePath();
         $this->set("countries",Core::make('helper/lists/countries')->getCountries());
         $this->set("states",Core::make('helper/lists/states_provinces')->getStates());
-        $this->addFooterItem(Core::make('helper/html')->javascript($packagePath.'/js/vividStoreFunctions.js'));
+        $this->requireAsset('javascript', 'vividStoreFunctions');
     }
     public function success()
     {

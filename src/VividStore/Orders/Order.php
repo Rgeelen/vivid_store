@@ -19,10 +19,8 @@ use \Concrete\Package\VividStore\Src\VividStore\Utilities\Price as Price;
 use \Concrete\Package\VividStore\Src\Attribute\Key\StoreOrderKey;
 use \Concrete\Package\VividStore\Src\VividStore\Cart\Cart as VividCart;
 use \Concrete\Package\VividStore\Src\VividStore\Tax\Tax;
-use \Concrete\Package\VividStore\Src\VividStore\Product\Product as VividProduct;
 use \Concrete\Package\VividStore\Src\VividStore\Orders\OrderItem as OrderItem;
 use \Concrete\Package\VividStore\Src\Attribute\Value\StoreOrderValue as StoreOrderValue;
-use \Concrete\Package\VividStore\Src\VividStore\Payment\Method as PaymentMethod;
 use \Concrete\Package\VividStore\Src\VividStore\Shipping\Method as ShippingMethod;
 use \Concrete\Package\VividStore\Src\VividStore\Customer\Customer as Customer;
 use \Concrete\Package\VividStore\Src\VividStore\Orders\OrderEvent as OrderEvent;
@@ -60,12 +58,16 @@ class Order extends Object
         
         //get the price details
         $smID = \Session::get('smID');
+        $sm = ShippingMethod::getByID($smID);
+        $shippingMethodTypeName = $sm->getShippingMethodType()->getShippingMethodTypeName();
+        $shippingMethodName = $sm->getName();
+        $smName = $shippingMethodTypeName.": ".$shippingMethodName;
+        
+        
         $shipping = VividCart::getShippingTotal();
-        $shipping = Price::formatFloat($shipping);
         $taxes = Tax::getTaxes();
         $totals = VividCart::getTotals();
         $total = $totals['total'];
-        $total = Price::formatFloat($total);
         $taxCalc = Config::get('vividstore.calculation');
 
         $taxTotal = array();
@@ -74,9 +76,9 @@ class Order extends Object
 
         foreach($taxes as $tax){
             if ($taxCalc == 'extract') {
-                $taxIncluded[] = Price::formatFloat($tax['taxamount']);
+                $taxIncludedTotal[] = $tax['taxamount'];
             }  else {
-                $taxTotal[] = Price::formatFloat($tax['taxamount']);
+                $taxTotal[] = $tax['taxamount'];
             }
             $taxLabels[] = $tax['name'];
         }
@@ -86,11 +88,11 @@ class Order extends Object
         $taxLabels = implode(',',$taxLabels);
         
         //get payment method
-        $pmID = $pm->getPaymentMethodID();
+        $pmName = $pm->getPaymentMethodName();
 
         //add the order
-        $vals = array($customer->getUserID(),$now,$pmID,$smID,$shipping,$taxTotal,$taxIncludedTotal,$taxLabels,$total);
-        $db->Execute("INSERT INTO VividStoreOrders(cID,oDate,pmID,smID,oShippingTotal,oTax,oTaxIncluded,oTaxName,oTotal) VALUES (?,?,?,?,?,?,?,?,?)", $vals);
+        $vals = array($customer->getUserID(),$now,$pmName,$smName,$shipping,$taxTotal,$taxIncludedTotal,$taxLabels,$total);
+        $db->Execute("INSERT INTO VividStoreOrders(cID,oDate,pmName,smName,oShippingTotal,oTax,oTaxIncluded,oTaxName,oTotal) VALUES (?,?,?,?,?,?,?,?,?)", $vals);
         $oID = $db->lastInsertId();
         $order = Order::getByID($oID);
         if($status){
@@ -113,76 +115,97 @@ class Order extends Object
         $order->setAttribute("billing_last_name",$billing_last_name);
         $order->setAttribute("billing_address",$billing_address);
         $order->setAttribute("billing_phone",$billing_phone);
-        $order->setAttribute("shipping_first_name",$shipping_first_name);
-        $order->setAttribute("shipping_last_name",$shipping_last_name);
-        $order->setAttribute("shipping_address",$shipping_address);
+
+        if ($smID) {
+            $order->setAttribute("shipping_first_name",$shipping_first_name);
+            $order->setAttribute("shipping_last_name",$shipping_last_name);
+            $order->setAttribute("shipping_address",$shipping_address);
+        }
+
 
         $customer->setLastOrderID($oID);
 
         //add the order items
         $cart = VividCart::getCart();
-        $groupstoadd = array();
-        $createlogin = false;
-
+        
         foreach ($cart as $cartItem) {
-            $taxes = Tax::getTaxForProduct($cartItem['product']['pID']);
+            $taxes = Tax::getTaxForProduct($cartItem);
             
-            $taxTotal = array();
-            $taxIncludedTotal = array();
-            $taxLabels = array();
+            $taxProductTotal = array();
+            $taxProductIncludedTotal = array();
+            $taxProductLabels = array();
 
             foreach($taxes as $tax){
                 if ($taxCalc == 'extract') {
-                    $taxIncludedTotal[] = Price::formatFloat($tax['taxamount']);
+                    $taxProductIncludedTotal[] = $tax['taxamount'];
                 }  else {
-                    $taxTotal[] = Price::formatFloat($tax['taxamount']);
+                    $taxProductTotal[] = $tax['taxamount'];
                 }
-                $taxLabels[] = $tax['name'];
+                $taxProductLabels[] = $tax['name'];
             }
-            $taxTotal = implode(',',$taxTotal);
-            $taxIncludedTotal = implode(',',$taxIncludedTotal);
-            $taxLabels = implode(',',$taxLabels);
+            $taxProductTotal = implode(',',$taxProductTotal);
+            $taxProductIncludedTotal = implode(',',$taxProductIncludedTotal);
+            $taxProductLabels = implode(',',$taxProductLabels);
 
-            OrderItem::add($cartItem,$oID,$taxTotal,$taxIncludedTotal,$taxLabels);
-            $product = VividProduct::getByID($cartItem['product']['pID']);
+            OrderItem::add($cartItem,$oID,$taxProductTotal,$taxProductIncludedTotal,$taxProductLabels);
+            
+        }
+
+        $discounts = VividCart::getDiscounts();
+
+        if ($discounts) {
+            foreach($discounts as $discount) {
+                $order->addDiscount($discount, VividCart::getCode());
+            }
+        }
+
+        //if the payment method is not external, go ahead and complete the order.
+        if(!$pm->external){
+            $order->completeOrder();
+        }
+                
+        return $order;
+    }
+    public function completeOrder()
+    {
+        $smID = \Session::get('smID');
+        $groupstoadd = array();
+        $createlogin = false;
+        $orderItems = $this->getOrderItems();
+        $customer = new Customer();
+        foreach($orderItems as $orderItem){
+            $product = $orderItem->getProductObject();
             if ($product && $product->hasUserGroups()) {
                 $groupstoadd = array_merge($groupstoadd, $product->getProductUserGroups());
             }
-
             if ($product && $product->pCreateUserAccount) {
                 $createlogin = true;
             }
         }
-
+        
         if ($createlogin && $customer->isGuest()) {
             $email = $customer->getEmail();
-
             $user = UserInfo::getByEmail($email);
-            $password = substr(str_shuffle('abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'), 0, 10);
-
-            $mh = Loader::helper('mail');
-            $mh->addParameter('siteName', Config::get('concrete.site'));
-
-            //$member_redirect_page_id = Config::get('snipcart_membership.complete_cID');
-            $navhelper = Core::make('helper/navigation');
-
-//                    if ($member_redirect_page_id) {
-//                        $target = Page::getById($member_redirect_page_id);
-//                    } else {
-            $target = Page::getByPath('/login');
-//                    }
-
-            if ($target) {
-                $link = $navhelper->getLinkToCollection($target, true);
-
-                if ($link) {
-                    $mh->addParameter('link', $link);
-                }
-            } else {
-                $mh->addParameter('link', '');
-            }
 
             if (!$user) {
+                $password = substr(str_shuffle('abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'), 0, 10);
+
+                $mh = Loader::helper('mail');
+                $mh->addParameter('siteName', Config::get('concrete.site'));
+
+                $navhelper = Core::make('helper/navigation');
+                $target = Page::getByPath('/login');
+
+                if ($target) {
+                    $link = $navhelper->getLinkToCollection($target, true);
+
+                    if ($link) {
+                        $mh->addParameter('link', $link);
+                    }
+                } else {
+                    $mh->addParameter('link', '');
+                }
+
                 $valc = Loader::helper('concrete/validation');
 
                 $min = Config::get('concrete.user.username.minimum');
@@ -213,32 +236,44 @@ class Order extends Object
                 // login the newly created user
                 User::loginByUserID($user->getUserID());
 
-                // update the order created with the user from the newly created user
-                $order->associateUser($user->getUserID());
-
-                // update the new user's attributes
-                $customer = new Customer($user->getUserID());
-                $customer->setValue('billing_first_name', $billing_first_name);
-                $customer->setValue('billing_last_name', $billing_last_name);
-                $customer->setValue('billing_address', $billing_address);
-                $customer->setValue('billing_phone', $billing_phone);
-                $customer->setValue('shipping_first_name', $shipping_first_name);
-                $customer->setValue('shipping_last_name', $shipping_last_name);
-                $customer->setValue('shipping_address', $shipping_address);
-
-
-            } else {  // if the user already exists, don't log them in, but send them a notice
-                $email = $user->getUserEmail();
-                $mh->load('new_access', 'vivid_store');
+            } else {
+                // we're attempting to create a new user with an email that has already been used
+                // earlier validation must have failed at this point, don't fetch the user
+                $user = null;
             }
 
             $mh->to($email);
             $mh->sendMail();
+        } elseif ($createlogin) {  // or if we found a user (because they are logged in) and need to use it to create logins
+            $user = $customer->getUserInfo();
         }
 
+         if ($user) {  // $user is going to either be the new one, or the user of the currently logged in customer
 
-        if (!$customer->isGuest() && $createlogin) {
-            $user = $customer->getUserInfo()->getUserObject();
+            // update the order created with the user from the newly created user
+            $this->associateUser($user->getUserID());
+
+            $billing_first_name = $customer->getValue("billing_first_name");
+            $billing_last_name = $customer->getValue("billing_last_name");
+            $billing_address = $customer->getValueArray("billing_address");
+            $billing_phone = $customer->getValue("billing_phone");
+            $shipping_first_name = $customer->getValue("shipping_first_name");
+            $shipping_last_name = $customer->getValue("shipping_last_name");
+            $shipping_address = $customer->getValueArray("shipping_address");
+
+            // update the  user's attributes
+            $customer = new Customer($user->getUserID());
+            $customer->setValue('billing_first_name', $billing_first_name);
+            $customer->setValue('billing_last_name', $billing_last_name);
+            $customer->setValue('billing_address', $billing_address);
+            $customer->setValue('billing_phone', $billing_phone);
+
+
+            if ($smID) {
+                $customer->setValue('shipping_first_name', $shipping_first_name);
+                $customer->setValue('shipping_last_name', $shipping_last_name);
+                $customer->setValue('shipping_address', $shipping_address);
+            }
 
             //add user to Store Customers group
             $group = \Group::getByName('Store Customer');
@@ -249,27 +284,17 @@ class Order extends Object
             foreach ($groupstoadd as $id) {
                 $g = Group::getByID($id);
                 if ($g) {
-                    $user->enterGroup($g);
-
+                    $user->getUserObject()->enterGroup($g);
                 }
             }
 
             $user->refreshUserGroups();
-
         }
-
-        $discounts = VividCart::getDiscounts();
-
-        if ($discounts) {
-            foreach($discounts as $discount) {
-                $order->addDiscount($discount, VividCart::getCode());
-            }
-        }
-
+        
         VividCart::clearCode();
-
+        
         // create order event and dispatch
-        $event = new OrderEvent($order);
+        $event = new OrderEvent($this);
         Events::dispatch('on_vividstore_order', $event);
         
         //send out the alerts
@@ -283,31 +308,38 @@ class Order extends Object
         $alertEmails = explode(",", Config::get('vividstore.notificationemails'));
         $alertEmails = array_map('trim',$alertEmails);
         
-            //receipt
-            $mh->from($fromEmail);
-            $mh->to($customer->getEmail());
+        //receipt
+        $mh->from($fromEmail);
+        $mh->to($customer->getEmail());
 
-            $mh->addParameter("order", $order);
-            $mh->addParameter("taxbased", $taxBased);
-            $mh->addParameter("taxlabel", $taxlabel);
-            $mh->load("order_receipt","vivid_store");
-            $mh->sendMail();
+        $mh->addParameter("order", $this);
+        $mh->load("order_receipt","vivid_store");
+        $mh->sendMail();
 
-            //order notification
-            $mh->from($fromEmail);
-            foreach($alertEmails as $alertEmail){
+        $validNotification = false;
+
+        //order notification
+        $mh->from($fromEmail);
+        foreach ($alertEmails as $alertEmail) {
+            if ($alertEmail) {
                 $mh->to($alertEmail);
+                $validNotification = true;
             }
-            $mh->addParameter("order", $order);
-            $mh->addParameter("taxbased", $taxBased);
-            $mh->addParameter("taxlabel", $taxlabel);
+        }
 
-            $mh->load("new_order_notification","vivid_store");
+        if ($validNotification) {
+            $mh->addParameter("order", $this);
+            $mh->load("new_order_notification", "vivid_store");
             $mh->sendMail();
-            
-        
+        }
+
+        // unset the shipping type, as next order might be unshippable
+        \Session::set('smID', '');
+
         VividCart::clear();
-        return $order;
+        
+        return $this;
+
     }
     public function remove()
     {
@@ -328,12 +360,7 @@ class Order extends Object
         return $items;
     }
     public function getOrderID(){ return $this->oID; }
-    public function getPaymentMethodName() {
-        $pm = PaymentMethod::getByID($this->pmID);
-        if(is_object($pm)){
-            return $pm->getPaymentMethodName();
-        }
-    }
+    public function getPaymentMethodName() { return $this->pmName; }
     public function getStatus(){ return $this->oStatus; }
     public function getCustomerID(){ return $this->cID; }
     public function getOrderDate(){ return $this->oDate; }
@@ -349,15 +376,21 @@ class Order extends Object
         }
         return $subtotal;
     }
-    public function getTaxes() {
-        $taxAmounts = explode(",",$this->oTax);
-        $taxLabels = explode(",",$this->oTaxName);
+    public function getTaxes()
+    {
         $taxes = array();
-        for($i=0;$i<count($taxAmounts);$i++){
-            $taxes[] = array(
-                'label' => $taxLabels[$i],
-                'amount' => $taxAmounts[$i]
-            );
+        if ($this->oTax || $this->oTaxIncluded) {
+            $taxAmounts = explode(",", $this->oTax);
+            $taxAmountsIncluded = explode(",", $this->oTaxIncluded);
+            $taxLabels = explode(",", $this->oTaxName);
+            $taxes = array();
+            for ($i = 0; $i < count($taxLabels); $i++) {
+                $taxes[] = array(
+                    'label' => $taxLabels[$i],
+                    'amount' => $taxAmounts[$i],
+                    'amountIncluded' => $taxAmountsIncluded[$i],
+                );
+            }
         }
         return $taxes;
     }
@@ -369,11 +402,19 @@ class Order extends Object
         }
         return $taxTotal;
     }
-    public function getShippingTotal() { return $this->oShippingTotal; }
-    public function getShippingMethodName(){
-        if($this->smID){
-            return ShippingMethod::getByID($this->smID)->getName();
+    public function getIncludedTaxTotal(){
+        $taxes = $this->getTaxes();
+        $taxTotal = 0;
+        foreach($taxes as $tax){
+            $taxTotal = $taxTotal + $tax['amountIncluded'];
         }
+        return $taxTotal;
+    }
+
+    public function getShippingTotal() { return $this->oShippingTotal; }
+    public function getShippingMethodName(){ return $this->smName; }
+    public function isShippable(){
+        return ($this->smName != "");
     }
     
     public function updateStatus($status)

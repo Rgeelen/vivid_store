@@ -2,7 +2,6 @@
 namespace Concrete\Package\VividStore\Controller\SinglePage;
 
 use PageController;
-use Core;
 use View;
 
 use \Concrete\Package\VividStore\Src\VividStore\Product\Product as VividProduct;
@@ -57,8 +56,8 @@ class Cart extends PageController
                 var CHECKOUTURL = '".View::url('/checkout')."';
             </script>
         ");
-        $this->addFooterItem(Core::make('helper/html')->javascript('vivid-store.js','vivid_store'));
-        $this->addHeaderItem(Core::make('helper/html')->css('vivid-store.css','vivid_store'));
+        $this->requireAsset('javascript', 'vivid-store');
+        $this->requireAsset('css', 'vivid-store');
 
         $discountsWithCodesExist = DiscountRule::discountsWithCodesExist();
         $this->set("discountsWithCodesExist",$discountsWithCodesExist);

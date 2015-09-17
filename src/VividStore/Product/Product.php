@@ -16,7 +16,6 @@ use \Concrete\Package\VividStore\Src\VividStore\Groups\ProductGroup;
 use \Concrete\Package\VividStore\Src\VividStore\Utilities\Price as Price;
 use \Concrete\Package\VividStore\Src\Attribute\Value\StoreProductValue as StoreProductValue;
 use \Concrete\Package\VividStore\Src\Attribute\Key\StoreProductKey as StoreProductKey;
-use \Concrete\Package\VividStore\Src\VividStore\Tax\TaxRate;
 use \Concrete\Package\VividStore\Src\VividStore\Tax\TaxClass;
 
 defined('C5_EXECUTE') or die(_("Access Denied."));
@@ -286,12 +285,13 @@ class Product extends Object
     public function getFormattedSalePrice(){ return Price::format($this->pSalePrice); }
     public function getActivePrice(){
         $salePrice = $this->getProductSalePrice();
-        if($salePrice != ""|| isset($salePrice)){
+        if($salePrice != ""){
             return $salePrice;
         } else {
             return $this->getProductPrice();
         }
     }
+    public function getFormattedActivePrice(){ return Price::format($this->getActivePrice()); }
     public function getTaxClassID(){ return $this->pTaxClass; }
     public function getTaxClass(){ return TaxClass::getByID($this->pTaxClass); }
     

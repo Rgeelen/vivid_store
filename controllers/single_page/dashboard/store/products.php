@@ -5,7 +5,6 @@ namespace Concrete\Package\VividStore\Controller\SinglePage\Dashboard\Store;
 use \Concrete\Core\Page\Controller\DashboardPageController;
 use Core;
 use View;
-use Package;
 use FilePermissions;
 use TaskPermission;
 use File;
@@ -15,7 +14,7 @@ use GroupList;
 
 use \Concrete\Package\VividStore\Src\VividStore\Product\Product as VividProduct;
 use \Concrete\Package\VividStore\Src\VividStore\Product\ProductList as VividProductList;
-use \Concrete\Package\VividStore\Src\VividStore\Groups\ProductGroup as VividProductGroup;
+use \Concrete\Package\VividStore\Src\VividStore\Groups\Group;
 use \Concrete\Package\VividStore\Src\VividStore\Groups\GroupList as VividProductGroupList;
 use \Concrete\Package\VividStore\Src\Attribute\Key\StoreProductKey;
 use \Concrete\Package\VividStore\Src\VividStore\Tax\TaxClass;
@@ -42,10 +41,9 @@ class Products extends DashboardPageController
         $this->set('products',$paginator->getCurrentPageResults());
         $this->set('pagination',$pagination);
         $this->set('paginator', $paginator);
-        $pkg = Package::getByHandle('vivid_store');
-        $packagePath = $pkg->getRelativePath();
-        $this->addHeaderItem(Core::make('helper/html')->css($packagePath.'/css/vividStoreDashboard.css'));
-        $this->addFooterItem(Core::make('helper/html')->javascript($packagePath.'/js/vividStoreFunctions.js'));
+        $this->requireAsset('css', 'vividStoreDashboard');
+        $this->requireAsset('javascript', 'vividStoreFunctions');
+
         $grouplist = VividProductGroupList::getGroupList();
         $this->set("grouplist",$grouplist);
         
@@ -156,11 +154,9 @@ class Products extends DashboardPageController
         $this->set('tp', new TaskPermission());
         $this->set('al', Core::make('helper/concrete/asset_library'));
                 
-        $pkg = Package::getByHandle('vivid_store');
-        $packagePath = $pkg->getRelativePath();
         $this->addHeaderItem('<style type="text/css">.redactor_editor{padding:20px}</style>');
-        $this->addHeaderItem(Core::make('helper/html')->css($packagePath.'/css/vividStoreDashboard.css'));
-        $this->addFooterItem(Core::make('helper/html')->javascript($packagePath.'/js/vividStoreFunctions.js'));
+        $this->requireAsset('css', 'vividStoreDashboard');
+        $this->requireAsset('javascript', 'vividStoreFunctions');
         
         $attrList = StoreProductKey::getList();
         $this->set('attribs',$attrList);
@@ -243,10 +239,8 @@ class Products extends DashboardPageController
     {
         $grouplist = VividProductGroupList::getGroupList();
         $this->set("grouplist",$grouplist);
-        $pkg = Package::getByHandle('vivid_store');
-        $packagePath = $pkg->getRelativePath();
-        $this->addHeaderItem(Core::make('helper/html')->css($packagePath.'/css/vividStoreDashboard.css'));
-        $this->addFooterItem(Core::make('helper/html')->javascript($packagePath.'/js/vividStoreFunctions.js'));
+        $this->requireAsset('css', 'vividStoreDashboard');
+        $this->requireAsset('javascript', 'vividStoreFunctions');
     }
     public function groupadded()
     {
@@ -256,19 +250,17 @@ class Products extends DashboardPageController
     public function addgroup()
     {
         $this->groups();
-        $data = $this->post();
         $this->error = null; //clear errors
-        $errors = $this->validateGroup($data);
+        $errors = $this->validateGroup($this->post());
         $this->error = $errors;
         if (!$errors->has()) {
-            VividProductGroup::add($data);
+            Group::add($this->post('groupName'));
             $this->redirect('/dashboard/store/products/', 'groupadded');
         }
     }
     public function editgroup($gID)
     {
-        $data = $this->post();
-        VividProductGroup::getByID($gID)->update($data);
+        Group::getByID($gID)->update($this->post('gName'));
     }
     public function validateGroup($args)
     {

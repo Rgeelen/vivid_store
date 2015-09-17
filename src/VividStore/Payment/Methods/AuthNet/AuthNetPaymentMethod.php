@@ -15,7 +15,7 @@ class AuthNetPaymentMethod extends PaymentMethod
     {
         $this->set('authnetLoginID',Config::get('vividstore.authnetLoginID'));
         $this->set('authnetTransactionKey',Config::get('vividstore.authnetTransactionKey'));
-        $this->set('authnetCurrency',Config::get('vividstore.authnetCurrency'));
+        //$this->set('authnetCurrency',Config::get('vividstore.authnetCurrency'));
         $this->set('authnetTestmode',Config::get('vividstore.authnetTestmode'));
         $this->set('form',Core::make("helper/form"));
         $form = Core::make("helper/form");
@@ -26,7 +26,7 @@ class AuthNetPaymentMethod extends PaymentMethod
     {
         Config::save('vividstore.authnetLoginID',$data['authnetLoginID']);
         Config::save('vividstore.authnetTransactionKey',$data['authnetTransactionKey']);
-        Config::save('vividstore.authnetCurrency',$data['authnetCurrency']);
+        //Config::save('vividstore.authnetCurrency',$data['authnetCurrency']);
         Config::save('vividstore.authnetTestmode',$data['authnetTestmode']);
     }
     
@@ -76,7 +76,7 @@ class AuthNetPaymentMethod extends PaymentMethod
         $transaction->setSandbox(AUTHORIZENET_SANDBOX);
         $transaction->setFields(
             array(
-                'amount' => Price::getFloat(VividCart::getTotal()),
+                'amount' => VividCart::getTotal(),
                 'card_num' => $_POST['authnet-checkout-credit-card'],
                 'exp_date' => $_POST['authnet-checkout-exp-month'].$_POST['authnet-checkout-exp-year']
             )

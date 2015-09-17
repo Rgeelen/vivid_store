@@ -1,11 +1,9 @@
 <?php
 namespace Concrete\Package\VividStore\Src\VividStore\Tax;
 
-use Package;
 use Core;
 use Database;
 
-use \Concrete\Package\VividStore\Src\VividStore\Tax\Tax;
 
 defined('C5_EXECUTE') or die(_("Access Denied."));
 
@@ -73,6 +71,13 @@ class TaxClass
     
     public function getTaxClassRateIDs(){
         return explode(',',$this->taxClassRates);   
+    }
+    public function addTaxClassRate($trID){
+        $taxClassRates = $this->taxClassRates;
+        $taxClassRates = explode(",",$taxClassRates);
+        $taxClassRates[] = $trID;
+        $this->setTaxClassRates($taxClassRates);
+        $this->save();
     }
     public function taxClassContainsTaxRate(TaxRate $taxRate){
         $trID = $taxRate->getTaxRateID();

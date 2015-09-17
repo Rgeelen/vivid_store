@@ -5,7 +5,6 @@ use Concrete\Core\Foundation\Object as Object;
 use Database;
 use User;
 use UserInfo;
-use \Concrete\Package\VividStore\Src\VividStore\Utilities\Price as Price;
 use \Concrete\Package\VividStore\Src\VividStore\Product\Product as VividProduct;
 defined('C5_EXECUTE') or die(_("Access Denied."));
 class OrderItem extends Object
@@ -24,7 +23,7 @@ class OrderItem extends Object
         $db = Database::get();
         $product = VividProduct::getByID($data['product']['pID']);
         $productName = $product->getProductName();
-        $productPrice = Price::getFloat($product->getFormattedPrice());
+        $productPrice = $product->getActivePrice();
         $qty = $data['product']['qty'];
         if (!$product->pQtyUnlim) {
             $inStock = $product->getProductQty();
